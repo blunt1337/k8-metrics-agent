@@ -1,0 +1,20 @@
+name: Docker Image CI
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set $TAG
+      run: echo "TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+    - name: Login to github registry
+      run: docker login ghcr.io --username blunt1337 --password ${{ secrets.GITHUB_TOKEN }}
+    - name: Build image
+      run: docker build . --tag ghcr.io/blunt1337/k8-metrics-agent:$TAG
+    - name: Push image
+      run: docker push ghcr.io/blunt1337/k8-metrics-agent:$TAG
