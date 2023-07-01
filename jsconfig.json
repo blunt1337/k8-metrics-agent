@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"checkJs": true,
+		"target": "es6",
+		"module": "ESNext",
+		"lib": ["es6"],
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"moduleResolution": "node"
+	},
+	"exclude": [
+		"node_modules",
+		"**/node_modules/*"
+	]
+}

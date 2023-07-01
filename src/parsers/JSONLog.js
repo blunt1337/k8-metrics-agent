@@ -15,13 +15,23 @@ export default function parseJSONLog(line, labels, path) {
 		}
 
 		// Override level
-		if (line.level) {
+		if (value.level) {
 			line.level = value.level
 			delete value.level
 		}
 
-		// Change replace "log"
-		line.log = value
+		// Transfert ip and uid
+		if (value.ip) {
+			labels.ip = value.ip
+			delete value.ip
+		}
+		if (value.uid) {
+			labels.uid = value.uid
+			delete value.uid
+		}
+
+		// Replace "log"
+		line.log = value.logs || value
 	} catch (err) {
 		console.warn('[WARN][IN-DOCKER-LOGS] Failed parsing log value', line.log)
 	}

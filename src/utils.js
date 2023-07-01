@@ -3,7 +3,7 @@ import http from 'node:http'
 
 // Class that calls internal method 'doRun' at interval of time
 export class Runner {
-	#timeoutId = -1
+	#timeoutId = null
 	#interval
 	#retryInterval
 
@@ -15,7 +15,6 @@ export class Runner {
 
 	/**
 	 * Call doRun after 'interval' and after 'retryInterval' if an error is returned
-	 * @param {string} table Buffer/table's name
 	 */
 	async run() {
 		clearTimeout(this.#timeoutId)
@@ -68,7 +67,9 @@ export const httpRequest = (method, url, data = null, options = {}) => new Promi
 		res.on('end', () => {
 			if (res.statusCode < 200 || res.statusCode >= 300) {
 				const err = new Error('Response code ' + res.statusCode)
+				// @ts-ignore
 				err.statusCode = res.statusCode
+				// @ts-ignore
 				err.data = data
 				reject(err)
 			} else {

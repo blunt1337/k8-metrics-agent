@@ -1,8 +1,10 @@
 import { Runner } from '../utils.js'
-import { FILE_LIST_INTERVAL, FILE_LIST_RETRY_INTERVAL, DOCKER_LOG_DIR, JSON_LOG_CONTAINERS, LOG_PARSERS } from '../config.js'
+import { FILE_LIST_INTERVAL, FILE_LIST_RETRY_INTERVAL, DOCKER_LOG_DIR, IGNORED_LOG_CONTAINERS, LOG_PARSERS } from '../config.js'
 import { opendir } from 'node:fs/promises'
 import { knex } from '../outputs/timescale.js'
 import { Tail } from 'tail'
+
+const noop = () => {}
 
 /**
  * List directory recusively
@@ -47,6 +49,11 @@ export default class K8Logs extends Runner {
 		this.#logsBuffer = outputs.logs
 	}
 
+	/**
+	 * Start tailing file
+	 * @param {string} path
+	 * @returns {Promise<() => void>} Cancel watching function
+	 */
 	async startTailing(path) {
 		console.debug('[DEBUG][IN-DOCKER-LOGS] Watching', path)
 
@@ -60,6 +67,7 @@ export default class K8Logs extends Runner {
 		// /var/log/pods/<namespace>_<pod-name>_<pod-id>/<container-name>/xxxx.log
 		const fileparts = path.split(/[_/]/g).splice(-5, 4)
 		const containerName = fileparts[3]
+		if (IGNORED_LOG_CONTAINERS.includes(containerName)) return noop
 		const labels = {
 			ns: fileparts[0],
 			pod: fileparts[1],
@@ -71,26 +79,53 @@ export default class K8Logs extends Runner {
 			fromBeginning: true,
 			follow: true,
 		})
-		tail.on('line', line => {
-			try {
-				line = JSON.parse(line)
-				if (!line.time || !line.log) return
-			} catch (err) {
-				console.warn('[WARN][IN-DOCKER-LOGS] Failed to parse log line', line)
-				return
-			}
 
+		const handleLine = (path, labels, [time, stream, line]) => {
 			// Already parsed
-			const timestamp3decimal = line.time.replace(/(\.[0-9]{3})[0-9]+Z/, '$1Z')
+			const timestamp3decimal = time.replace(/(\.[0-9]{3})[0-9]+Z/, '$1Z')
 			if (lastLogTime && lastLogTime > timestamp3decimal) return
 			lastLogTime = timestamp3decimal
 
 			// Add log to output
 			try {
-				const log = LOG_PARSERS(containerName)(line, labels, path)
+				labels.stream = stream
+				const log = LOG_PARSERS(containerName)({
+					time,
+					stream,
+					log: line,
+				}, labels, path)
 				if (log) this.#logsBuffer.push(log)
 			} catch (err) {
-				console.error('[ERR][IN-DOCKER-LOGS] Failed to parse log line', err.message)
+				console.error('[ERR][IN-DOCKER-LOGS] Failed to parse log line', line)
+			}
+		}
+
+		let buffer
+		tail.on('line', line => {
+			try {
+				// https://github.com/kubernetes/design-proposals-archive/blob/main/node/kubelet-cri-logging.md
+				// CRI log parsing
+				let [time, stream, mode] = line.split(' ', 4)
+				line = line.substring(time.length + stream.length + mode.length + 3)
+				if (!time || !stream || !mode || !line) return
+
+				// Partial line
+				if (mode === 'P') {
+					if (buffer && buffer[0] === time && buffer[1] === stream) buffer[2] += line
+					else buffer = [time, stream, line]
+					return
+				} else {
+					if (buffer) {
+						handleLine(path, labels, buffer)
+					}
+					buffer = null
+				}
+
+				// Full line
+				handleLine(path, labels, [time, stream, line])
+			} catch (err) {
+				console.warn('[WARN][IN-DOCKER-LOGS] Failed to parse log line', line)
+				return
 			}
 		})
 		tail.on('error', err => console.error('[ERR][IN-DOCKER-LOGS] Tail error', err.message))
@@ -101,7 +136,8 @@ export default class K8Logs extends Runner {
 	// List files, create/remove watchers
 	async doRun() {
 		try {
-			const files = await tree(DOCKER_LOG_DIR)
+			const files = (await tree(DOCKER_LOG_DIR))
+				.filter(file => /0\.log$/.test(file))
 			const tails = this.#tails
 			console.debug(`[DEBUG][IN-DOCKER-LOGS] List log files (${files.length} files)`)
 
@@ -117,6 +153,7 @@ export default class K8Logs extends Runner {
 				const startPromise = this.startTailing(file).catch(err => {
 					console.error('[ERR][IN-DOCKER-LOGS]', err.message)
 					delete tails[file]
+					return noop
 				})
 
 				// Stop watching function
@@ -137,13 +174,3 @@ export default class K8Logs extends Runner {
 		}
 	}
 }
-
-/*
-name-space_container-name(-xxxxx)?-xxxxx_xxx-xxx-xxx-xxx-xxx/container-name/
-/var/log/pods/<namespace>_<pod_name>_<pod_id>/<container_name>/xxxx.log
-
-{"log":"2022-10-15T16:37:20.554749Z 0 [Warning] [MY-011068] [Server] The syntax '--skip-host-cache' is deprecated and will be removed in a future release. Please use SET GLOBAL host_cache_size=0 instead.\n","stream":"stderr","time":"2022-10-15T16:37:20.556845519Z"}
-{"log":"2022-10-15T16:37:20.555300Z 0 [Warning] [MY-010918] [Server] 'default_authentication_plugin' is deprecated and will be removed in a future release. Please use authentication_policy instead.\n","stream":"stderr","time":"2022-10-15T16:37:20.556867199Z"}
-
-max line length
-*/

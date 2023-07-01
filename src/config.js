@@ -49,9 +49,12 @@ export const FILE_LIST_RETRY_INTERVAL = 10_000
 // Directory of logs
 export const DOCKER_LOG_DIR = '/var/log/pods'
 // Containers with JSON log format
-export const JSON_LOG_CONTAINERS = ['web', 'echo', 'worker']
+export const JSON_LOG_CONTAINERS = ['web-api', 'web-api-unsafe', 'web-echo', 'worker']
+// Container names where logs will not be saved
+export const IGNORED_LOG_CONTAINERS = ['metrics-agent']
 // Parser by container name
 export const LOG_PARSERS = containerName => {
-	if (['web', 'echo', 'worker'].includes(containerName)) return parseJSONLog
+	if (JSON_LOG_CONTAINERS.includes(containerName)) return parseJSONLog
+	//TODO: haproxy
 	return parseDefaultLog
 }
