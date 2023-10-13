@@ -65,14 +65,8 @@ export default class K8Logs extends Runner {
 
 		// Parse filename to labels
 		// /var/log/pods/<namespace>_<pod-name>_<pod-id>/<container-name>/xxxx.log
-		const fileparts = path.split(/[_/]/g).splice(-5, 4)
-		const containerName = fileparts[3]
+		const [ns, pod, _, containerName] = path.split(/[_/]/g).splice(-5, 4)
 		if (IGNORED_LOG_CONTAINERS.includes(containerName)) return noop
-		const labels = {
-			ns: fileparts[0],
-			pod: fileparts[1],
-			ctn: containerName,
-		}
 		
 		// Start tailing from the start
 		const tail = new Tail(path, {
@@ -80,7 +74,7 @@ export default class K8Logs extends Runner {
 			follow: true,
 		})
 
-		const handleLine = (path, labels, [time, stream, line]) => {
+		const handleLine = (path, [time, stream, line]) => {
 			// Already parsed
 			const timestamp3decimal = time.replace(/(\.[0-9]{3})[0-9]+Z/, '$1Z')
 			if (lastLogTime && lastLogTime > timestamp3decimal) return
@@ -88,12 +82,16 @@ export default class K8Logs extends Runner {
 
 			// Add log to output
 			try {
-				labels.stream = stream
 				const log = LOG_PARSERS(containerName)({
 					time,
 					stream,
 					log: line,
-				}, labels, path)
+				}, {
+					ns,
+					pod,
+					ctn: containerName,
+					stream,
+				}, path)
 				if (log) this.#logsBuffer.push(log)
 			} catch (err) {
 				console.error('[ERR][IN-DOCKER-LOGS] Failed to parse log line', line)
@@ -116,13 +114,13 @@ export default class K8Logs extends Runner {
 					return
 				} else {
 					if (buffer) {
-						handleLine(path, labels, buffer)
+						handleLine(path, buffer)
 					}
 					buffer = null
 				}
 
 				// Full line
-				handleLine(path, labels, [time, stream, line])
+				handleLine(path, [time, stream, line])
 			} catch (err) {
 				console.warn('[WARN][IN-DOCKER-LOGS] Failed to parse log line', line)
 				return

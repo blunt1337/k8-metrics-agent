@@ -5,7 +5,7 @@ CREATE TABLE logs (
 	path TEXT NOT NULL,
 	labels JSONB NOT NULL,
 	level LOG_LEVELS NOT NULL,
-	value JSON NOT NULL,
+	value JSONB NOT NULL,
 	CONSTRAINT logs_unique UNIQUE (time, path, level)
 );
 SELECT create_hypertable('logs', 'time');
