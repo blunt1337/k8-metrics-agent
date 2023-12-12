@@ -15,13 +15,13 @@ export const GRACEFUL_TIMEOUT = 10_000
 // -- Timescale output config
 
 // Save to database interval (after a success)
-export const SAVE_INTERVAL = 30_000
+export const SAVE_INTERVAL = +ENV.SAVE_INTERVAL || 30_000
 // Save to database interval (after a failure)
-export const RETRY_INTERVAL = 10_000
+export const RETRY_INTERVAL = +ENV.RETRY_INTERVAL || 10_000
 // Maximum records per save interval
-export const MAX_BUFFER_SIZE = 1_000
+export const MAX_BUFFER_SIZE = +ENV.MAX_BUFFER_SIZE || 1_000
 // Maximum records per batch insert
-export const MAX_BATCH_INSERT = 100
+export const MAX_BATCH_INSERT = +ENV.MAX_BATCH_INSERT || 100
 // URL of the timescale server
 export const TIMESCALE_URL = ENV.TIMESCALE_URL || 'postgres://timescale:timescalepwd@host.docker.internal/timescale'
 
